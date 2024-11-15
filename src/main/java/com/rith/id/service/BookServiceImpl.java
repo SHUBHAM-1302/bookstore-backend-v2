@@ -1,15 +1,23 @@
 package com.rith.id.service;
 
+import com.rith.id.constants.Status;
 import com.rith.id.dto.BookDetailDto;
-import com.rith.id.entity.Book;
+import com.rith.id.dto.BookDto;
+import com.rith.id.entity.Books;
+import com.rith.id.exception.RecordNotFoundException;
 import com.rith.id.repository.BookRepository;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
+import static com.rith.id.util.CurrencyUtil.fromUSD;
+import static com.rith.id.util.CurrencyUtil.toUSD;
 
 @Service
 public class BookServiceImpl implements BookService{
@@ -18,114 +26,152 @@ public class BookServiceImpl implements BookService{
     private BookRepository bookRepository;
 
     @Override
-    public List<BookDetailDto> getAllBooks(){
-        return transformBookToBookDetailDto(bookRepository.findAll());
+    @Transactional(readOnly = true)
+    public List<BookDto> getAllBooks(String status){
+        List<Books> books;
+        if("all".equalsIgnoreCase(status)){
+            books = bookRepository.findAll();
+        }
+        else {
+            books = bookRepository.findAllByStatus(status);
+        }
+        return transformBookToBookDto(books);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public BookDetailDto getBookById(Long id){
-        Optional<Book> book = bookRepository.findById(id);
+        Optional<Books> book = bookRepository.findById(id);
         if(book.isEmpty()){
-            return null;
+            throw new RecordNotFoundException("Book with "+id+" not found","Use book with valid id");
         }
         return transformBookToBookDetailDto(book.get());
     }
 
     @Override
+    @Transactional
     public BookDetailDto postBookDetail(BookDetailDto bookDetailDto){
-        Book book = transformBokDetailDtoToBook(bookDetailDto);
+        Books books = transformBokDetailDtoToBook(bookDetailDto);
         //
-        book = bookRepository.save(book);
-        bookDetailDto.setBookId(book.getBookId());
+        books = bookRepository.save(books);
+        bookDetailDto.setBookId(books.getBookId());
         return bookDetailDto;
     }
 
     @Override
+    @Transactional
     public BookDetailDto updateBookDetail(Long id, BookDetailDto bookDetailDto){
-        Book book;
-        Optional<Book> optionalBook = bookRepository.findById(id);
+        Books books;
+        Optional<Books> optionalBook = bookRepository.getByIdWithPessimisticLock(id);
         if(optionalBook.isEmpty()){
-            throw new IllegalArgumentException();
+            throw new RecordNotFoundException("Book with "+id+" not found","Use book with valid id");
         }
-        book = optionalBook.get();
+        books = optionalBook.get();
         //
-        exchangeValues(book,bookDetailDto);
+        exchangeValues(books,bookDetailDto);
         //
-        book = bookRepository.save(book);
-        bookDetailDto.setBookId(book.getBookId());
+        books = bookRepository.save(books);
+        bookDetailDto.setBookId(books.getBookId());
         return bookDetailDto;
     }
 
-    private void exchangeValues(Book book, BookDetailDto bookDetailDto) {
-        book.setAuthor(bookDetailDto.getAuther());
-        book.setTitle(bookDetailDto.getTitle());
-        book.setSummary(bookDetailDto.getDescription());
-        book.setPrice(bookDetailDto.getRate());
-        book.setIsSold(bookDetailDto.getIsSold());
+    @Override
+    @Transactional
+    public BookDetailDto updateBookToPurchased(Long id) {
+        Books books;
+        Optional<Books> optionalBook = bookRepository.getByIdWithPessimisticLock(id);
+        if(optionalBook.isEmpty()){
+            throw new RecordNotFoundException("Book with "+id+" not found","Use book with valid id");
+        }
+        books = optionalBook.get();
+        if(Status.SOLD.toString().equalsIgnoreCase(books.getStatus())){
+            throw new RecordNotFoundException("Book with "+id+" not found","Use book with valid id");
+        }
+        books.setStatus(Status.SOLD.toString());
+        bookRepository.save(books);
+
+        return transformBookToBookDetailDto(books);
     }
 
-    public BookDetailDto transformBookToBookDetailDto(Book book){
+    private void exchangeValues(Books books, BookDetailDto bookDetailDto) {
+        books.setAuthor(bookDetailDto.getAuthor());
+        books.setTitle(bookDetailDto.getTitle());
+        books.setSummary(bookDetailDto.getSummary());
+        books.setPrice(fromUSD(bookDetailDto.getPrice()));
+        books.setStatus(bookDetailDto.getStatus());
+    }
+
+    public BookDetailDto transformBookToBookDetailDto(Books books){
         BookDetailDto bookDetailDto = new BookDetailDto();
-        bookDetailDto.setDescription(book.getSummary());
-        bookDetailDto.setRate(book.getPrice());
-        bookDetailDto.setIsSold(book.getIsSold());
-        bookDetailDto.setAuther(book.getAuthor());
-        bookDetailDto.setTitle(book.getTitle());
-        bookDetailDto.setBookId(book.getBookId());
+        bookDetailDto.setSummary(books.getSummary());
+        bookDetailDto.setPrice(toUSD(books.getPrice()));
+        bookDetailDto.setStatus(books.getStatus());
+        bookDetailDto.setAuthor(books.getAuthor());
+        bookDetailDto.setTitle(books.getTitle());
+        bookDetailDto.setBookId(books.getBookId());
         return bookDetailDto;
     }
 
-    public List<BookDetailDto> transformBookToBookDetailDto(List<Book> books){
-        List<BookDetailDto> bookDetailDtos = new ArrayList<>();
-        for (Book book: books){
-            bookDetailDtos.add(transformBookToBookDetailDto(book));
+    public BookDto transformBookToBookDto(Books books){
+        BookDto bookDto = new BookDto();
+        bookDto.setPrice(toUSD(books.getPrice()));
+        bookDto.setAuthor(books.getAuthor());
+        bookDto.setTitle(books.getTitle());
+        bookDto.setBookId(books.getBookId());
+        return bookDto;
+    }
+
+    public List<BookDto> transformBookToBookDto(List<Books> books){
+        List<BookDto> bookDetailDtos = new ArrayList<>();
+        for (Books book: books){
+            bookDetailDtos.add(transformBookToBookDto(book));
         }
         return bookDetailDtos;
     }
 
-    public Book transformBokDetailDtoToBook(BookDetailDto bookDetailDto){
-        Book book = new Book();
-        book.setAuthor(bookDetailDto.getAuther());
-        book.setBookId(bookDetailDto.getBookId());
-        book.setSummary(bookDetailDto.getDescription());
-        book.setTitle(bookDetailDto.getTitle());
-        book.setPrice(bookDetailDto.getRate());
-        book.setIsSold(bookDetailDto.getIsSold());
-        return book;
+    public Books transformBokDetailDtoToBook(BookDetailDto bookDetailDto){
+        Books books = new Books();
+        books.setAuthor(bookDetailDto.getAuthor());
+        books.setBookId(bookDetailDto.getBookId());
+        books.setSummary(bookDetailDto.getSummary());
+        books.setTitle(bookDetailDto.getTitle());
+        books.setPrice(fromUSD(bookDetailDto.getPrice()));
+        books.setStatus(bookDetailDto.getStatus());
+        return books;
     }
 
 
     @PostConstruct
     public void onInit(){
         if(bookRepository.count() == 0) {
-            List<Book> books = new ArrayList<>();
-            books.add(Book.builder()
+            List<Books> books = new ArrayList<>();
+            books.add(Books.builder()
                     .title("Book 1")
                     .author("Ram Ghor")
                     .summary("consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et ")
-                    .price(29.99)
-                    .isSold(false)
+                    .price(BigDecimal.valueOf(29.99))
+                    .status(Status.AVAILABLE.toString())
                     .build());
-            books.add(Book.builder()
+            books.add(Books.builder()
                     .title("Book 2")
                     .author("Mar rohg")
                     .summary(" veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem")
-                    .price(19.95)
-                    .isSold(false)
+                    .price(BigDecimal.valueOf(11111119.95))
+                    .status(Status.AVAILABLE.toString())
                     .build());
-            books.add(Book.builder()
+            books.add(Books.builder()
                     .title("Book 3")
                     .author("Sham Sundar")
                     .summary(" veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem")
-                    .price(59.99)
-                    .isSold(false)
+                    .price(BigDecimal.valueOf(59.99))
+                    .status(Status.AVAILABLE.toString())
                     .build());
-            books.add(Book.builder()
+            books.add(Books.builder()
                     .title("Book 4")
                     .author("Mash Radnus")
                     .summary(" veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem")
-                    .price(14.99)
-                    .isSold(false)
+                    .price(BigDecimal.valueOf(14.99))
+                    .status(Status.SOLD.toString())
                     .build());
             bookRepository.saveAll(books);
         }

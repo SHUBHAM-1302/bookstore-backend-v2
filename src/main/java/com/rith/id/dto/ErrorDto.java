@@ -7,10 +7,7 @@ import lombok.*;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class BookDetailDto extends BookDto{
-
-    private String status;
-
-    private String summary;
-
+public class ErrorDto {
+    String cause;
+    String advise;
 }

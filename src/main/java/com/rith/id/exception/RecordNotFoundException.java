@@ -12,17 +12,17 @@ public final class RecordNotFoundException extends RuntimeException {
     private String errormessage;
     private String advicemsg;
 
-    public RecordNotFoundException(final String errormessage, final Throwable cause, HttpStatus errorcode, String advicemsg) {
+    public RecordNotFoundException(final String errormessage, final Throwable cause, String advicemsg) {
         super(errormessage, cause);
         this.errormessage = errormessage;
-        this.errorcode = errorcode;
+        this.errorcode = HttpStatus.NOT_FOUND;
         this.advicemsg = advicemsg;
     }
 
-    public RecordNotFoundException(final String errormessage, HttpStatus errorcode, String advicemsg) {
+    public RecordNotFoundException(final String errormessage, String advicemsg) {
         super(errormessage);
         this.errormessage = errormessage;
-        this.errorcode = errorcode;
+        this.errorcode = HttpStatus.NOT_FOUND;
         this.advicemsg = advicemsg;
     }
 }
