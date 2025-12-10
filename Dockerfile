@@ -1,15 +1,25 @@
-
-# Use Java 21 as base image
-FROM eclipse-temurin:21-jdk
-
-# Set working directory inside container
+# ===== 1️⃣ Build Stage =====
+FROM maven:3.9.6-eclipse-temurin-21 AS build
 WORKDIR /app
 
-# Copy jar file from target folder to container
-COPY target/bookStore-1.0-SNAPSHOT.jar app.jar
+# Copy pom.xml and download dependencies
+COPY pom.xml .
+RUN mvn -q -e -B dependency:go-offline
 
-# Expose application port (change if needed)
+# Copy application source
+COPY src ./src
+
+# Build project
+RUN mvn -q -e -B clean package -DskipTests
+
+
+# ===== 2️⃣ Run Stage =====
+FROM eclipse-temurin:21-jdk
+WORKDIR /app
+
+# Copy jar from build stage
+COPY --from=build /app/target/*.jar app.jar
+
 EXPOSE 8080
 
-# Run the jar
 ENTRYPOINT ["java", "-jar", "app.jar"]
